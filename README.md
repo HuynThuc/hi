@@ -1,4 +1,12 @@
-# Importing the Database using phpMyAdmin
+## Project Setup
+    ```
+    npm install
+    ```
+
+## Run
+    ```
+    npm run dev
+    ```
 
 Follow these steps to import the database using phpMyAdmin:
 
@@ -6,7 +14,7 @@ Follow these steps to import the database using phpMyAdmin:
 
 Make sure you have XAMPP installed on your system with Apache and MySQL services.
 
-## Steps to Import Database
+## Question
 
 1. Design a relational database to store all the information contained in the above images such as products, addresses, stores, categories, orders, users, …. And describe the types of database normalization you used.:
 
@@ -79,7 +87,7 @@ Make sure you have XAMPP installed on your system with Apache and MySQL services
    Service:
     async getAllCategories(): Promise<Category[]> {
     return await this.categoryRepository.find();
-  }
+    }
 
    API: GET-http://localhost:3002/api/category
    OUTPUT: 
@@ -95,5 +103,80 @@ Make sure you have XAMPP installed on your system with Apache and MySQL services
          "description": "Dép cho nam"
       }
    ]
+   ```
+
+6. Fetches a list of products that belong to a specific category.
+
+   ```
+   Service:
+   async getProductsByCategory(categoryId: number): Promise<Product[]> {
+    const category = await this.categoryRepository.findOne({
+      where: { id: categoryId },
+      relations: ['products'],
+    });
+    if (!category) {
+      throw new Error('Category not found');
+    }
+    return category.products;
+    }
+
+   API: GET-http://localhost:3002/api/product/category/:categoryId
+   ```
+
+7. Creates a new order and processes payment.
+
+   ```
+   Service:
+    async createOrders(data: OrderDTO): Promise<Order> {
+    // 1. Kiểm tra người dùng
+    const user = await this.userRepository.findOneBy({ id: data.userId });
+    if (!user) throw new Error('Người dùng không tồn tại');
+
+    // 2. Lấy các orderItems (giỏ hàng) của user
+    const orderItems = await this.orderItemRepository.find({
+      where: { user: { id: data.userId } },
+      relations: ['product']
+    });
+
+    if (orderItems.length === 0) {
+      throw new Error('Không có sản phẩm trong giỏ hàng');
+    }
+
+    // 3. Tính tổng tiền
+    const totalAmount = orderItems.reduce((sum, item) => {
+      return sum + item.priceAtPurchase;
+    }, 0);
+
+    // 4. Tạo order
+    const order = this.orderRepository.create({
+      user,
+      totalAmount,
+      status: 'pending'
+    });
+
+    const savedOrder = await this.orderRepository.save(order);
+    // Gửi email xác nhận
+      await this.emailService.sendOrderConfirmationEmail(user, savedOrder);
+    return savedOrder;
+    }
+
+   API: POST-http://localhost:3002/api/order/add
+   ```
+
+8. Send order confirmation email to user (processed asynchronously with order creation flow).
+
+   ```
+    async sendOrderConfirmationEmail(user: User, order: Order) {
+    const htmlContent = orderConfirmationTemplate(user, order);
+
+    const mailOptions = {
+      from: emailConfig.auth.user,
+      to: user.email,
+      subject: 'Xác nhận đơn hàng của bạn',
+      html: htmlContent,
+    };
+
+    await this.transporter.sendMail(mailOptions);
+  }
    ```
 
